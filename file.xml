@@ -1,0 +1,11 @@
+<Response>
+    <Say>
+        <Content>Hello world!</Content>
+    </Say>
+    <Gather voice="" input="" timeout="0" numDigits="0" action="" language="">
+        <Gather></Gather>
+        <Say>
+            <Content></Content>
+        </Say>
+    </Gather>
+</Response>
