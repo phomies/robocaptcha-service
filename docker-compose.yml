@@ -1,6 +1,12 @@
-version: '2'
+version: '3'
+
 services:
-  callcaptcha-service:
-    build: .
+  expressjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5320:5000"
+    volumes:
+      - /data/callcaptcha-service/node_modules:/home/node/app/node_modules
