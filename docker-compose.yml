@@ -1,0 +1,6 @@
+version: '2'
+services:
+  callcaptcha-service:
+    build: .
+    ports:
+      - "5000:5000"
