@@ -35,9 +35,9 @@ type TwimlSay struct {
 // Main function
 func main() {
 	http.HandleFunc("/incoming", httpIncoming)
-	http.HandleFunc("/verify", httpVerify)
+	http.HandleFunc("/verify/", httpVerify)
 	http.HandleFunc("/", healthcheck)
-	http.ListenAndServe(":3000", nil)
+	http.ListenAndServe(":8080", nil)
 }
 
 // Web service health check
@@ -72,6 +72,8 @@ func httpIncoming(w http.ResponseWriter, r *http.Request) {
 			Timeout:   3,
 			NumDigits: 4,
 			Action:    actionUrl,
+			Input:     "dtmf speech",
+			Language:  "en-SG",
 			Say: &TwimlSay{
 				Voice:   "Polly.Brian",
 				Content: voicePrompt,
@@ -96,15 +98,18 @@ func httpVerify(w http.ResponseWriter, r *http.Request) {
 	// Removes the /request/ from "/request/123/abc"
 	pathParams := strings.TrimPrefix(r.URL.String(), "/request/")
 	correct := strings.Split(pathParams, "/")
-	if digitsEntered != correct[0] && speechResult != correct[0] {
 
-		// Incorrect, try again from scratch
+	speechOk := strings.Contains(speechResult, correct[1])
+	digitsOk := digitsEntered == correct[0]
+
+	if speechOk || digitsOk {
+
+		// Correct, allow the call to pass through
 		twimlStruct := TwimlResponse{
 			Say: &TwimlSay{
-				Content: "Incorrect, please try again!",
+				Content: "You did it, redirecting your call now.",
 				Voice:   "Polly.Brian",
 			},
-			Redirect: "/incoming",
 		}
 
 		twimlOutput, err := xml.Marshal(twimlStruct)
@@ -114,14 +119,16 @@ func httpVerify(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
 		w.Write(twimlOutput)
 		return
+
 	}
 
-	// Correct, allow the call to pass through
+	// Incorrect, try again from scratch
 	twimlStruct := TwimlResponse{
 		Say: &TwimlSay{
-			Content: "You did it, redirecting your call now.",
+			Content: "Incorrect, please try again!",
 			Voice:   "Polly.Brian",
 		},
+		Redirect: "/incoming",
 	}
 
 	twimlOutput, err := xml.Marshal(twimlStruct)
