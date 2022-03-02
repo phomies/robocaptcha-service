@@ -1,145 +1,121 @@
 package main
 
 import (
-	"encoding/xml"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
-// Web service health check
-func healthcheck(w http.ResponseWriter, r *http.Request) {
+// XML Generation for Call Ending
 
-	twimlStruct := TwimlResponse{
-		Say: &TwimlSay{
-			Content: "Hello world!",
-		},
-	}
-	twimlOutput, err := xml.Marshal(twimlStruct)
-	if err != nil {
-		fmt.Println(err)
-	}
-	w.Header().Set("Content-Type", "application/xml")
-	w.Write([]byte(xml.Header))
-	w.Write(twimlOutput)
+// Web service health check
+func healthCheck(ctx *gin.Context) {
+	ctx.XML(http.StatusOK, structHelloWorld())
 }
 
-// TwiML Incoming Call Handler
-func httpIncoming(w http.ResponseWriter, r *http.Request) {
+/**
+ *  Incoming call handler
+ */
+func httpIncoming(ctx *gin.Context) {
 
+	callSid := ctx.PostForm("CallSid")
+	numberFrom := ctx.Request.FormValue("From")
+	numberTo := ctx.Request.FormValue("Called")
+
+	// Get number and user details
+	if numberTo == "" {
+		numberTo = os.Getenv("DEFAULT_NUMBER_TO")
+	}
+	userDialed := getUserFromMaskedNumber(numberTo)
+	if userDialed == nil {
+		ctx.XML(http.StatusOK, structUserNotFound())
+	}
+	userDialedId := (*getUserFromMaskedNumber(numberTo)).ID
+
+	// Block if called too many times
+	times, err := strconv.Atoi(ctx.Param("times"))
+	if err != nil {
+		times = 0
+	}
+	if times == 0 {
+		insertCall(callSid, numberFrom, userDialedId)
+	}
+	if times > 2 {
+		updateCall(callSid, "timeout")
+		oid := insertNotification("Call timed out from number "+numberFrom, userDialedId)
+		fmt.Println("Object ID: + ", oid.String())
+		sqsSendNotification(oid.String())
+		ctx.XML(http.StatusOK, structEndCall())
+		return
+	}
+
+	// Generate random numbers and words for voice recognition
 	randomWord := generateRandomWord()
 	randomNumber := generateRandomNumber()
 	randomNumberSpaced := addSpaces(strconv.Itoa(randomNumber))
-	actionUrl := fmt.Sprintf("/verify/%d/%s", randomNumber, randomWord)
+	actionUrl := fmt.Sprintf("/verify/%d/%s/%d", randomNumber, randomWord, times)
 	voicePrompt := fmt.Sprintf(
-		`Your call is being screened for human verification. Please enter the numbers %s or say the word %s.`,
+		`Your call is being screened by robo captcha. Please enter the numbers %s or say the word %s.`,
 		randomNumberSpaced,
 		randomWord,
 	)
 
-	twimlStruct := TwimlResponse{
-		Gather: &TwimlGather{
-			Timeout:   3,
-			NumDigits: 4,
-			Action:    actionUrl,
-			Input:     "dtmf speech",
-			Language:  "en-SG",
-			Say: &TwimlSay{
-				Voice:   "Polly.Brian",
-				Content: voicePrompt,
-			},
-		},
-		Redirect: "/incoming",
-	}
-
-	twimlOutput, err := xml.Marshal(twimlStruct)
-	if err != nil {
-		fmt.Println(err)
-	}
-	w.Header().Set("Content-Type", "application/xml")
-	w.Write([]byte(xml.Header))
-	w.Write(twimlOutput)
+	twimlStruct := structVerifyCall(actionUrl, voicePrompt, times)
+	ctx.XML(http.StatusOK, twimlStruct)
 }
 
-// Perform verification on incoming calls
-func httpVerify(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	speechResult := strings.ToLower(r.Form.Get("SpeechResult"))
-	digitsEntered := r.Form.Get("Digits")
-	numberDialed := r.Form.Get("Called")
-	numberFrom := r.Form.Get("From")
+/**
+ *  Perform verification on incoming calls
+ */
+func httpVerify(ctx *gin.Context) {
 
+	correctNum := ctx.Param("verifyNum")
+	correctWord := ctx.Param("verifyWord")
+	callSid := ctx.Request.FormValue("CallSid")
+	digitsEntered := ctx.Request.FormValue("Digits")
+	numberTo := ctx.Request.FormValue("Called")
+	numberFrom := ctx.Request.FormValue("From")
+	times, _ := strconv.Atoi(ctx.Param("times"))
+
+	// Get user details
 	var userDialed User
-	if numberDialed != "" {
-		userDialed = *getUserFromMaskedNumber(numberDialed)
-	} else {
-		// Use mock user if anonymous phone
-		numberFrom = os.Getenv("DEFAULT_NUMBER_FROM")
-		userDialed = User{
-			PhoneNumber: os.Getenv("ANON_FORWARD_TO"),
-		}
+	if numberTo == "" {
+		numberTo = os.Getenv("DEFAULT_NUMBER_TO")
 	}
+	userDialed = *getUserFromMaskedNumber(numberTo)
 
-	forwardTo := userDialed.PhoneNumber
-
-	// Removes the /request/ from "/request/123/abc"
-	pathParams := strings.TrimPrefix(r.URL.String(), "/verify/")
-	correct := strings.Split(pathParams, "/")
-
-	if len(correct) != 2 {
-		w.WriteHeader(500)
-		w.Write([]byte("Error, non-2 arguments received"))
+	// Block call if timeout
+	if times > 2 {
+		ctx.XML(http.StatusOK, structEndCall())
+		oid := insertNotification("Call timed out from number "+numberFrom, userDialed.ID)
+		sqsSendNotification(oid.String())
+		updateCall(callSid, "timeout")
 		return
 	}
 
-	fmt.Println(r.URL.String())
-	fmt.Println(correct)
+	// Get speech from call
+	speechResult := strings.ToLower(ctx.Request.FormValue("SpeechResult"))
 	fmt.Println(speechResult, digitsEntered)
 
-	speechOk := strings.Contains(speechResult, correct[1])
-	digitsOk := digitsEntered == correct[0]
+	speechOk := strings.Contains(speechResult, correctWord)
+	digitsOk := digitsEntered == correctNum
 
 	if speechOk || digitsOk {
+		forwardTo := userDialed.PhoneNumber
 
 		// Correct, allow the call to pass through
-		twimlStruct := TwimlResponse{
-			Say: &TwimlSay{
-				Content: "You did it, redirecting your call now.",
-				Voice:   "Polly.Brian",
-			},
-			Dial: &TwimlDial{
-				DialNumber: forwardTo,
-				CallerId:   numberFrom,
-			},
-		}
-
-		twimlOutput, err := xml.Marshal(twimlStruct)
-		if err != nil {
-			fmt.Println(err)
-		}
-		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(xml.Header))
-		w.Write(twimlOutput)
+		twimlStruct := structForwardingCall(forwardTo, numberFrom)
+		oid := insertNotification("Successful call from "+numberFrom, userDialed.ID)
+		sqsSendNotification(oid.String())
+		updateCall(callSid, "success")
+		ctx.XML(http.StatusOK, twimlStruct)
 		return
-
 	}
 
-	// Incorrect, try again from scratch
-	twimlStruct := TwimlResponse{
-		Say: &TwimlSay{
-			Content: "Incorrect, please try again!",
-			Voice:   "Polly.Brian",
-		},
-		Redirect: "/incoming",
-	}
-
-	twimlOutput, err := xml.Marshal(twimlStruct)
-	if err != nil {
-		fmt.Println(err)
-	}
-	w.Header().Set("Content-Type", "application/xml")
-	w.Write([]byte(xml.Header))
-	w.Write(twimlOutput)
+	// Incorrect, try again and increment count
+	ctx.XML(http.StatusOK, structIncorrectEntered(times))
 }

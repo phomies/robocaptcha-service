@@ -1,17 +1,20 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
 // Main function
 func main() {
-	godotenv.Load("../.env")
-	http.HandleFunc("/incoming", httpIncoming)
-	http.HandleFunc("/verify/", httpVerify)
-	http.HandleFunc("/mongo/users", getUsersCollection)
-	http.HandleFunc("/", healthcheck)
-	http.ListenAndServe(":5000", nil)
+	godotenv.Load(".env")
+	server := gin.New()
+	server.POST("/incoming", httpIncoming)
+	server.POST("/incoming/:times", httpIncoming)
+	server.POST("/verify/:verifyNum/:verifyWord/:times", httpVerify)
+	server.GET("/", healthCheck)
+	fmt.Println(http.ListenAndServe(":5000", server))
 }
