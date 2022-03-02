@@ -10,7 +10,7 @@ WORKDIR /app
 
 RUN go mod download
 
-COPY * /app
+COPY * /app/
 
 RUN go build -o callcaptcha-service .
 
