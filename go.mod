@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/aws/aws-sdk-go v1.43.9
 	github.com/gin-gonic/gin v1.7.7
-	go.mongodb.org/mongo-driver v1.8.3
+	go.mongodb.org/mongo-driver v1.8.4
 )
 
 require (
