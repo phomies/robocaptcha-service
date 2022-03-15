@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-func sqsSendNotification(messageBody string) error {
+func sqsSendNotification(messageBody string) {
 	sqsClient := sqs.New(sqsGetSession())
 	queueUrl := os.Getenv("AWS_SQS_NOTIFICATION_URL")
 	fmt.Println(sqsClient.Client.Endpoint)
@@ -21,9 +21,9 @@ func sqsSendNotification(messageBody string) error {
 		MessageBody: aws.String(messageBody),
 	})
 
-    fmt.Println(err)
-
-	return err
+	if err != nil {
+		panic(err)
+	}
 }
 
 func sqsGetSession() *session.Session {

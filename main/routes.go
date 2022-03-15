@@ -33,17 +33,35 @@ func httpIncoming(ctx *gin.Context) {
 	userDialed := getUserFromMaskedNumber(numberTo)
 	if userDialed == nil {
 		ctx.XML(http.StatusOK, structUserNotFound())
+		return
 	}
 	userDialedId := (*getUserFromMaskedNumber(numberTo)).ID
 
-	// Block if called too many times
+	// Get the number of times the call has happened
 	times, err := strconv.Atoi(ctx.Param("times"))
 	if err != nil {
 		times = 0
 	}
+
+	// First instance, record call into database
 	if times == 0 {
 		insertCall(callSid, numberFrom, userDialedId)
 	}
+
+	// Get blacklist/whitelist information
+	contactInfo := getContactIfExists(userDialedId, numberFrom)
+	if contactInfo != nil {
+		if contactInfo.IsBlacklisted {
+			ctx.XML(http.StatusOK, structBlacklisted())
+			return
+		}
+		if contactInfo.IsWhitelisted {
+			ctx.XML(http.StatusOK, structWhitelisted(userDialed.PhoneNumber, numberFrom))
+			return
+		}
+	}
+
+	// Block if called too many times
 	if times > 2 {
 		updateCall(callSid, "timeout")
 		oid := insertNotification("Call timed out from number "+numberFrom, userDialedId)

@@ -5,7 +5,6 @@ import (
 	"strconv"
 )
 
-// TwiML Structs
 type TwimlResponse struct {
 	XMLName  xml.Name     `xml:"Response"`
 	Say      *TwimlSay    `xml:",omitempty"`
@@ -102,4 +101,23 @@ func structForwardingCall(forwardTo string, numberFrom string) TwimlResponse {
 		},
 	}
 	return twimlStruct
+}
+
+func structWhitelisted(forwardTo string, numberFrom string) TwimlResponse {
+	twimlStruct := TwimlResponse{
+		Dial: &TwimlDial{
+			DialNumber: forwardTo,
+			CallerId:   numberFrom,
+		},
+	}
+	return twimlStruct
+}
+
+func structBlacklisted() TwimlResponse {
+	return TwimlResponse{
+		Say: &TwimlSay{
+			Voice:   "Polly.Brian",
+			Content: "Call failed.",
+		},
+	}
 }

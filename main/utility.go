@@ -9,7 +9,7 @@ func generateRandomWord() string {
 	wordList := []string{
 		"singular",
 		"designer",
-		"agenda",
+		"degenerate",
 		"commitment",
 		"tradition",
 		"conference",

@@ -13,19 +13,25 @@ import (
 )
 
 type User struct {
-	ID                  string               `bson:"_id"`
-	Name                string               `bson:"name"`
-	Password            string               `bson:"password"`
-	Email               string               `bson:"email"`
-	ProxyNumber         string               `bson:"proxyNumber"`
-	PhoneNumber         string               `bson:"phoneNumber"`
-	VerificationLevel   int                  `bson:"verificationLevel"`
-	DateJoined          primitive.DateTime   `bson:"dateJoined"`
-	Whitelist           []string             `bson:"whitelist"`
-	Blacklist           []string             `bson:"blacklist"`
-	SubscriptionHistory []Payment            `bson:"subscriptionHistory"`
-	CallHistory         []primitive.ObjectID `bson:"callHistory"`
-	NotificationHistory []primitive.ObjectID `bson:"notificationHistory"`
+	ID                string             `bson:"_id"`
+	Name              string             `bson:"name"`
+	Password          string             `bson:"password"`
+	Email             string             `bson:"email"`
+	ProxyNumber       string             `bson:"proxyNumber"`
+	PhoneNumber       string             `bson:"phoneNumber"`
+	VerificationLevel int                `bson:"verificationLevel"`
+	DateJoined        primitive.DateTime `bson:"dateJoined"`
+}
+
+type Contact struct {
+	ID            primitive.ObjectID `bson:"_id"`
+	UserID        string             `bson:"userId"`
+	Name          string             `bson:"name"`
+	Number        string             `bson:"number"`
+	IsBlacklisted bool               `bson:"isBlacklisted"`
+	IsWhitelisted bool               `bson:"isWhitelisted"`
+	CreatedAt     primitive.DateTime `bson:"createdAt"`
+	UpdatedAt     primitive.DateTime `bson:"updatedAt"`
 }
 
 type Payment struct {
@@ -54,50 +60,74 @@ type Notification struct {
 	URL      string             `bson:"url"`
 }
 
-func getMongoContext() (context.Context, *mongo.Client, context.CancelFunc) {
-	ctx, ctxCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	fmt.Println("Connecting to MongoDB:", os.Getenv("DB_CONN_STRING"))
-
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("DB_CONN_STRING")))
+/**
+Get MongoDB context associated
+*/
+func getMongoCollection(collectionName string) *mongo.Collection {
+	clientOptions := options.Client().ApplyURI(os.Getenv("DB_CONN_STRING"))
+	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
 	}
-
-	return ctx, client, ctxCancel
+	return client.Database("callcaptcha").Collection(collectionName)
 }
 
+/**
+Get pointer to user object, based on the masked number of a recipient
+*/
 func getUserFromMaskedNumber(maskedRecipient string) *User {
 	fmt.Println("Masked Recipient:", maskedRecipient)
-	ctx, client, ctxCancel := getMongoContext()
 
-	defer client.Disconnect(ctx)
-	defer ctxCancel()
+	usersCollection := getMongoCollection("users")
+	users, err := usersCollection.Find(context.TODO(), bson.M{"maskedNumber": maskedRecipient})
 
-	callcaptchaDb := client.Database("callcaptcha")
-	matchedUser, err := callcaptchaDb.Collection("users").Find(ctx, bson.M{"maskedNumber": maskedRecipient})
 	if err != nil {
 		panic(err)
 	}
 
-	if matchedUser.Next(ctx) {
+	if users.Next(context.TODO()) {
 		var user User
-
-		err = matchedUser.Decode(&user)
+		err = users.Decode(&user)
 		if err != nil {
 			panic(err)
 		}
-
-		//fmt.Println(user)
 		return &user
 	}
+
 	return nil
 }
 
+/*
+Gets the contact of a given user ID
+*/
+func getContactIfExists(recipientUserId string, callerNumber string) *Contact {
+	fmt.Println("Getting contact information user ID", recipientUserId, "and", callerNumber)
+
+	contactsCollection := getMongoCollection("contacts")
+	query := bson.M{"userId": recipientUserId, "number": callerNumber}
+	matchedContact, err := contactsCollection.Find(context.TODO(), query)
+
+	if err != nil {
+		panic(err)
+	}
+
+	if matchedContact.Next(context.TODO()) {
+		var contact Contact
+		err = matchedContact.Decode(&contact)
+		if err != nil {
+			panic(err)
+		}
+		return &contact
+	}
+
+	return nil
+}
+
+/*
+Insert a call object to the database
+*/
 func insertCall(callSid string, fromNumber string, toUserId string) {
-	ctx, client, ctxCancel := getMongoContext()
-	defer client.Disconnect(ctx)
-	defer ctxCancel()
 
 	callStruct := &Call{
 		ID:       primitive.NewObjectID(),
@@ -108,23 +138,29 @@ func insertCall(callSid string, fromNumber string, toUserId string) {
 		Action:   "in-progress",
 	}
 
-	callcaptchaDb := client.Database("callcaptcha")
-	callcaptchaDb.Collection("calls").InsertOne(ctx, callStruct)
+	callsCollection := getMongoCollection("calls")
+	_, err := callsCollection.InsertOne(context.TODO(), callStruct)
+	if err != nil {
+		panic(err)
+	}
 }
 
+/*
+Update the call object in the database with the following action
+*/
 func updateCall(callSid string, action string) {
-	ctx, client, ctxCancel := getMongoContext()
-	defer client.Disconnect(ctx)
-	defer ctxCancel()
-
-	callcaptchaDb := client.Database("callcaptcha")
-	callcaptchaDb.Collection("calls").UpdateOne(ctx, bson.M{"callSid": callSid}, bson.M{"$set": bson.M{"action": action}})
+	callsCollection := getMongoCollection("calls")
+	updateCriteria, updateAction := bson.M{"callSid": callSid}, bson.M{"$set": bson.M{"action": action}}
+	_, err := callsCollection.UpdateOne(context.TODO(), updateCriteria, updateAction)
+	if err != nil {
+		panic(err)
+	}
 }
 
+/*
+Insert new notification
+*/
 func insertNotification(content string, userId string) primitive.ObjectID {
-	ctx, client, ctxCancel := getMongoContext()
-	defer client.Disconnect(ctx)
-	defer ctxCancel()
 
 	notificationStruct := &Notification{
 		ID:       primitive.NewObjectID(),
@@ -132,10 +168,13 @@ func insertNotification(content string, userId string) primitive.ObjectID {
 		DateTime: time.Now(),
 		Content:  content,
 		Read:     false,
-		URL:      "http://google.com",
+		URL:      "https://google.com",
 	}
 
-	callcaptchaDb := client.Database("callcaptcha")
-	callcaptchaDb.Collection("notifications").InsertOne(ctx, notificationStruct)
+	notificationsCollection := getMongoCollection("notifications")
+	_, err := notificationsCollection.InsertOne(context.TODO(), notificationStruct)
+	if err != nil {
+		panic(err)
+	}
 	return notificationStruct.ID
 }
