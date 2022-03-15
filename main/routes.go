@@ -53,10 +53,16 @@ func httpIncoming(ctx *gin.Context) {
 	if contactInfo != nil {
 		if contactInfo.IsBlacklisted {
 			ctx.XML(http.StatusOK, structBlacklisted())
+			oid := insertNotification("Blocked call from "+numberFrom, userDialed.ID)
+			sqsSendNotification(oid.String())
+			updateCall(callSid, "blacklisted")
 			return
 		}
 		if contactInfo.IsWhitelisted {
 			ctx.XML(http.StatusOK, structWhitelisted(userDialed.PhoneNumber, numberFrom))
+			oid := insertNotification("Successful call from "+numberFrom, userDialed.ID)
+			sqsSendNotification(oid.String())
+			updateCall(callSid, "whitelisted")
 			return
 		}
 	}
