@@ -54,14 +54,14 @@ func httpIncoming(ctx *gin.Context) {
 		if contactInfo.IsBlacklisted {
 			ctx.XML(http.StatusOK, structBlacklisted())
 			oid := insertNotification("Blocked call from "+numberFrom, userDialed.ID)
-			sqsSendNotification(oid.String())
+			sqsSendNotification(oid.Hex())
 			updateCall(callSid, "blacklisted")
 			return
 		}
 		if contactInfo.IsWhitelisted {
 			ctx.XML(http.StatusOK, structWhitelisted(userDialed.PhoneNumber, numberFrom))
 			oid := insertNotification("Successful call from "+numberFrom, userDialed.ID)
-			sqsSendNotification(oid.String())
+			sqsSendNotification(oid.Hex())
 			updateCall(callSid, "whitelisted")
 			return
 		}
@@ -72,7 +72,7 @@ func httpIncoming(ctx *gin.Context) {
 		updateCall(callSid, "timeout")
 		oid := insertNotification("Call timed out from number "+numberFrom, userDialedId)
 		fmt.Println("Object ID: + ", oid.String())
-		sqsSendNotification(oid.String())
+		sqsSendNotification(oid.Hex())
 		ctx.XML(http.StatusOK, structEndCall())
 		return
 	}
@@ -116,7 +116,7 @@ func httpVerify(ctx *gin.Context) {
 	if times > 2 {
 		ctx.XML(http.StatusOK, structEndCall())
 		oid := insertNotification("Call timed out from number "+numberFrom, userDialed.ID)
-		sqsSendNotification(oid.String())
+		sqsSendNotification(oid.Hex())
 		updateCall(callSid, "timeout")
 		return
 	}
@@ -134,7 +134,7 @@ func httpVerify(ctx *gin.Context) {
 		// Correct, allow the call to pass through
 		twimlStruct := structForwardingCall(forwardTo, numberFrom)
 		oid := insertNotification("Successful call from "+numberFrom, userDialed.ID)
-		sqsSendNotification(oid.String())
+		sqsSendNotification(oid.Hex())
 		updateCall(callSid, "success")
 		ctx.XML(http.StatusOK, twimlStruct)
 		return
