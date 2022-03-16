@@ -63,15 +63,16 @@ type Notification struct {
 /**
 Get MongoDB context associated
 */
-func getMongoCollection(collectionName string) *mongo.Collection {
+func getMongoCollection(collectionName string) (*mongo.Collection, *mongo.Client, context.Context, context.CancelFunc) {
 	clientOptions := options.Client().ApplyURI(os.Getenv("DB_CONN_STRING"))
 	clientOptions = clientOptions.SetConnectTimeout(1 * time.Second)
-	client, err := mongo.Connect(context.TODO(), clientOptions)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
 	}
-	return client.Database("callcaptcha").Collection(collectionName)
+	return client.Database("callcaptcha").Collection(collectionName), client, ctx, cancel
 }
 
 /**
@@ -80,16 +81,21 @@ Get pointer to user object, based on the masked number of a recipient
 func getUserFromMaskedNumber(maskedRecipient string) *User {
 	fmt.Println("Masked Recipient:", maskedRecipient)
 
-	usersCollection := getMongoCollection("users")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	users, err := usersCollection.Find(ctx, bson.M{"maskedNumber": maskedRecipient})
+	usersCollection, client, ctx, cancel := getMongoCollection("users")
+	defer func() {
+		cancel()
+		err := client.Disconnect(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
+	users, err := usersCollection.Find(ctx, bson.M{"maskedNumber": maskedRecipient})
 	if err != nil {
 		panic(err)
 	}
 
-	if users.Next(context.TODO()) {
+	if users.Next(ctx) {
 		var user User
 		err = users.Decode(&user)
 		if err != nil {
@@ -107,17 +113,23 @@ Gets the contact of a given user ID
 func getContactIfExists(recipientUserId string, callerNumber string) *Contact {
 	fmt.Println("Getting contact information user ID", recipientUserId, "and", callerNumber)
 
-	contactsCollection := getMongoCollection("contacts")
+	contactsCollection, client, ctx, cancel := getMongoCollection("contacts")
+	defer func() {
+		cancel()
+		err := client.Disconnect(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	query := bson.M{"userId": recipientUserId, "number": callerNumber}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+
 	matchedContact, err := contactsCollection.Find(ctx, query)
 
 	if err != nil {
 		panic(err)
 	}
 
-	if matchedContact.Next(context.TODO()) {
+	if matchedContact.Next(ctx) {
 		var contact Contact
 		err = matchedContact.Decode(&contact)
 		if err != nil {
@@ -143,9 +155,15 @@ func insertCall(callSid string, fromNumber string, toUserId string) {
 		Action:   "in-progress",
 	}
 
-	callsCollection := getMongoCollection("calls")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	callsCollection, client, ctx, cancel := getMongoCollection("calls")
+	defer func() {
+		cancel()
+		err := client.Disconnect(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
 	_, err := callsCollection.InsertOne(ctx, callStruct)
 	if err != nil {
 		panic(err)
@@ -156,10 +174,17 @@ func insertCall(callSid string, fromNumber string, toUserId string) {
 Update the call object in the database with the following action
 */
 func updateCall(callSid string, action string) {
-	callsCollection := getMongoCollection("calls")
+
+	callsCollection, client, ctx, cancel := getMongoCollection("calls")
+	defer func() {
+		cancel()
+		err := client.Disconnect(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
 	updateCriteria, updateAction := bson.M{"callSid": callSid}, bson.M{"$set": bson.M{"action": action}}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
 	_, err := callsCollection.UpdateOne(ctx, updateCriteria, updateAction)
 	if err != nil {
 		panic(err)
@@ -180,12 +205,19 @@ func insertNotification(content string, userId string) primitive.ObjectID {
 		URL:      "https://google.com",
 	}
 
-	notificationsCollection := getMongoCollection("notifications")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	notificationsCollection, client, ctx, cancel := getMongoCollection("notifications")
+	defer func() {
+		cancel()
+		err := client.Disconnect(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
 	_, err := notificationsCollection.InsertOne(ctx, notificationStruct)
 	if err != nil {
 		panic(err)
 	}
+
 	return notificationStruct.ID
 }
