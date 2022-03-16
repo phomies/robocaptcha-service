@@ -76,19 +76,24 @@ func getMongoCollection(collectionName string) (*mongo.Collection, *mongo.Client
 }
 
 /**
+Cleanup MongoDB connection by cancelling context and closing connection
+*/
+func doMongoCleanup(client *mongo.Client, ctx context.Context, cancel context.CancelFunc) {
+	cancel()
+	err := client.Disconnect(ctx)
+	if err != nil {
+		panic(err)
+	}
+}
+
+/**
 Get pointer to user object, based on the masked number of a recipient
 */
 func getUserFromMaskedNumber(maskedRecipient string) *User {
 	fmt.Println("Masked Recipient:", maskedRecipient)
 
 	usersCollection, client, ctx, cancel := getMongoCollection("users")
-	defer func() {
-		cancel()
-		err := client.Disconnect(ctx)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer doMongoCleanup(client, ctx, cancel)
 
 	users, err := usersCollection.Find(ctx, bson.M{"maskedNumber": maskedRecipient})
 	if err != nil {
@@ -114,13 +119,8 @@ func getContactIfExists(recipientUserId string, callerNumber string) *Contact {
 	fmt.Println("Getting contact information user ID", recipientUserId, "and", callerNumber)
 
 	contactsCollection, client, ctx, cancel := getMongoCollection("contacts")
-	defer func() {
-		cancel()
-		err := client.Disconnect(ctx)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer doMongoCleanup(client, ctx, cancel)
+
 	query := bson.M{"userId": recipientUserId, "number": callerNumber}
 
 	matchedContact, err := contactsCollection.Find(ctx, query)
@@ -156,13 +156,7 @@ func insertCall(callSid string, fromNumber string, toUserId string) {
 	}
 
 	callsCollection, client, ctx, cancel := getMongoCollection("calls")
-	defer func() {
-		cancel()
-		err := client.Disconnect(ctx)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer doMongoCleanup(client, ctx, cancel)
 
 	_, err := callsCollection.InsertOne(ctx, callStruct)
 	if err != nil {
@@ -176,13 +170,7 @@ Update the call object in the database with the following action
 func updateCall(callSid string, action string) {
 
 	callsCollection, client, ctx, cancel := getMongoCollection("calls")
-	defer func() {
-		cancel()
-		err := client.Disconnect(ctx)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer doMongoCleanup(client, ctx, cancel)
 
 	updateCriteria, updateAction := bson.M{"callSid": callSid}, bson.M{"$set": bson.M{"action": action}}
 	_, err := callsCollection.UpdateOne(ctx, updateCriteria, updateAction)
@@ -206,13 +194,7 @@ func insertNotification(content string, userId string) primitive.ObjectID {
 	}
 
 	notificationsCollection, client, ctx, cancel := getMongoCollection("notifications")
-	defer func() {
-		cancel()
-		err := client.Disconnect(ctx)
-		if err != nil {
-			panic(err)
-		}
-	}()
+	defer doMongoCleanup(client, ctx, cancel)
 
 	_, err := notificationsCollection.InsertOne(ctx, notificationStruct)
 	if err != nil {

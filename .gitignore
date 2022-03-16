@@ -2,4 +2,4 @@
 *.exe~
 tmp/
 .env
-/.idea
+/.idea/**
