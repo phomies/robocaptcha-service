@@ -65,6 +65,7 @@ Get MongoDB context associated
 */
 func getMongoCollection(collectionName string) *mongo.Collection {
 	clientOptions := options.Client().ApplyURI(os.Getenv("DB_CONN_STRING"))
+	clientOptions = clientOptions.SetConnectTimeout(1 * time.Second)
 	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
 		fmt.Println(err)
@@ -80,7 +81,9 @@ func getUserFromMaskedNumber(maskedRecipient string) *User {
 	fmt.Println("Masked Recipient:", maskedRecipient)
 
 	usersCollection := getMongoCollection("users")
-	users, err := usersCollection.Find(context.TODO(), bson.M{"maskedNumber": maskedRecipient})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	users, err := usersCollection.Find(ctx, bson.M{"maskedNumber": maskedRecipient})
 
 	if err != nil {
 		panic(err)
@@ -106,7 +109,9 @@ func getContactIfExists(recipientUserId string, callerNumber string) *Contact {
 
 	contactsCollection := getMongoCollection("contacts")
 	query := bson.M{"userId": recipientUserId, "number": callerNumber}
-	matchedContact, err := contactsCollection.Find(context.TODO(), query)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	matchedContact, err := contactsCollection.Find(ctx, query)
 
 	if err != nil {
 		panic(err)
@@ -139,7 +144,9 @@ func insertCall(callSid string, fromNumber string, toUserId string) {
 	}
 
 	callsCollection := getMongoCollection("calls")
-	_, err := callsCollection.InsertOne(context.TODO(), callStruct)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := callsCollection.InsertOne(ctx, callStruct)
 	if err != nil {
 		panic(err)
 	}
@@ -151,7 +158,9 @@ Update the call object in the database with the following action
 func updateCall(callSid string, action string) {
 	callsCollection := getMongoCollection("calls")
 	updateCriteria, updateAction := bson.M{"callSid": callSid}, bson.M{"$set": bson.M{"action": action}}
-	_, err := callsCollection.UpdateOne(context.TODO(), updateCriteria, updateAction)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := callsCollection.UpdateOne(ctx, updateCriteria, updateAction)
 	if err != nil {
 		panic(err)
 	}
@@ -172,7 +181,9 @@ func insertNotification(content string, userId string) primitive.ObjectID {
 	}
 
 	notificationsCollection := getMongoCollection("notifications")
-	_, err := notificationsCollection.InsertOne(context.TODO(), notificationStruct)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := notificationsCollection.InsertOne(ctx, notificationStruct)
 	if err != nil {
 		panic(err)
 	}
