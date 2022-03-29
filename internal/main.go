@@ -10,7 +10,11 @@ import (
 
 // Main function
 func main() {
-	godotenv.Load(".env")
+	err := godotenv.Load(".env")
+	if err != nil {
+		panic("Error: env file not present")
+	}
+
 	server := gin.New()
 	server.POST("/incoming", httpIncoming)
 	server.POST("/incoming/:times", httpIncoming)
