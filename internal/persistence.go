@@ -34,13 +34,13 @@ type Contact struct {
 	UpdatedAt     primitive.DateTime `bson:"updatedAt"`
 }
 
-type Payment struct {
-	DateStart     primitive.DateTime `bson:"dateStart"`
-	DateEnd       primitive.DateTime `bson:"dateEnd"`
-	Amount        float64            `bson:"amount"`
-	TransactionId string             `bson:"transactionId"`
-	Plan          string             `bson:"plan"`
-}
+//type Payment struct {
+//	DateStart     primitive.DateTime `bson:"dateStart"`
+//	DateEnd       primitive.DateTime `bson:"dateEnd"`
+//	Amount        float64            `bson:"amount"`
+//	TransactionId string             `bson:"transactionId"`
+//	Plan          string             `bson:"plan"`
+//}
 
 type Call struct {
 	ID       primitive.ObjectID `bson:"_id"`
@@ -139,6 +139,36 @@ func getContactIfExists(recipientUserId string, callerNumber string) *Contact {
 	}
 
 	return nil
+}
+
+func insertContact(recipientUserId string, callerNumber string) {
+
+	c := getContactIfExists(recipientUserId, callerNumber)
+
+	if c != nil {
+		fmt.Println("Contact already exists for user, not adding.")
+		return
+	}
+
+	contactStruct := &Contact{
+		ID:            primitive.NewObjectID(),
+		UserID:        recipientUserId,
+		Name:          callerNumber,
+		Number:        callerNumber,
+		IsBlacklisted: false,
+		IsWhitelisted: true,
+		CreatedAt:     primitive.NewDateTimeFromTime(time.Now()),
+		UpdatedAt:     primitive.NewDateTimeFromTime(time.Now()),
+	}
+
+	contactsCollection, client, ctx, cancel := getMongoCollection("contacts")
+	defer doMongoCleanup(client, ctx, cancel)
+
+	_, err := contactsCollection.InsertOne(ctx, contactStruct)
+
+	if err != nil {
+		panic(err)
+	}
 }
 
 /*

@@ -136,6 +136,11 @@ func httpVerify(ctx *gin.Context) {
 		oid := insertNotification("Successful call from "+numberFrom, userDialed.ID)
 		sqsSendNotification(oid.Hex())
 		updateCall(callSid, "success")
+
+		if userDialed.VerificationLevel <= 2 {
+			insertContact(userDialed.ID, numberFrom)
+		}
+
 		ctx.XML(http.StatusOK, twimlStruct)
 		return
 	}
