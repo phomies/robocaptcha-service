@@ -17,6 +17,7 @@ type User struct {
 	Name              string             `bson:"name"`
 	Password          string             `bson:"password"`
 	Email             string             `bson:"email"`
+	GoogleProviderUID string             `bson:"googleProviderUid"`
 	ProxyNumber       string             `bson:"proxyNumber"`
 	PhoneNumber       string             `bson:"phoneNumber"`
 	VerificationLevel int                `bson:"verificationLevel"`
@@ -54,10 +55,10 @@ type Call struct {
 type Notification struct {
 	ID       primitive.ObjectID `bson:"_id"`
 	UserID   string             `bson:"userId"`
+	GoogleID string             `bson:"googleId"`
 	DateTime time.Time          `bson:"dateTime"`
 	Content  string             `bson:"content"`
 	Read     bool               `bson:"read"`
-	URL      string             `bson:"url"`
 }
 
 /**
@@ -212,15 +213,15 @@ func updateCall(callSid string, action string) {
 /*
 Insert new notification
 */
-func insertNotification(content string, userId string) primitive.ObjectID {
+func insertNotification(content string, userId string, googleId string) primitive.ObjectID {
 
 	notificationStruct := &Notification{
 		ID:       primitive.NewObjectID(),
+		GoogleID: googleId,
 		UserID:   userId,
 		DateTime: time.Now(),
 		Content:  content,
 		Read:     false,
-		URL:      "https://google.com",
 	}
 
 	notificationsCollection, client, ctx, cancel := getMongoCollection("notifications")
