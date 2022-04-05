@@ -11,8 +11,9 @@ import (
 // Main function
 func main() {
 	err := godotenv.Load(".env")
+
 	if err != nil {
-		panic("Error: env file not present")
+		fmt.Printf("WARNING: .env file not present")
 	}
 
 	server := gin.New()
